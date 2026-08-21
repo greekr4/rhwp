@@ -2835,8 +2835,21 @@ impl DocumentCore {
 
         let tree = self.build_page_tree(page_num)?;
 
-        // 렌더 트리에서 TextRun 노드를 재귀적으로 수집
-        fn collect_text_runs(node: &RenderNode, runs: &mut Vec<String>) {
+        // 렌더 트리에서 TextRun 노드를 재귀적으로 수집.
+        // 상위 TextLine의 (line_index, baseline)을 실어 프런트가 y좌표 휴리스틱 없이
+        // 줄 소속을 판별할 수 있게 한다.
+        fn collect_text_runs(
+            node: &RenderNode,
+            line: Option<(u32, f64)>,
+            runs: &mut Vec<String>,
+        ) {
+            let line = if let RenderNodeType::TextLine(ref tl) = node.node_type {
+                tl.line_index
+                    .map(|idx| (idx, node.bbox.y + tl.baseline))
+                    .or(line)
+            } else {
+                line
+            };
             if let RenderNodeType::TextRun(ref text_run) = node.node_type {
                 let positions = compute_char_positions(&text_run.text, &text_run.style);
                 let char_x: Vec<String> = positions.iter().map(|v| format!("{:.1}", v)).collect();
@@ -2907,8 +2920,16 @@ impl DocumentCore {
                     _ => String::new(),
                 };
 
+                // 줄 소속 정보 (프런트 줄 병합용 — 휴리스틱 대체)
+                let line_info = match line {
+                    Some((idx, baseline)) => {
+                        format!(",\"lineIdx\":{},\"baselineY\":{:.1}", idx, baseline)
+                    }
+                    None => String::new(),
+                };
+
                 runs.push(format!(
-                    "{{\"text\":\"{}\",\"x\":{:.1},\"y\":{:.1},\"w\":{:.1},\"h\":{:.1},\"charX\":[{}]{}{}{}{}{}}}",
+                    "{{\"text\":\"{}\",\"x\":{:.1},\"y\":{:.1},\"w\":{:.1},\"h\":{:.1},\"charX\":[{}]{}{}{}{}{}{}}}",
                     escaped_text,
                     node.bbox.x,
                     node.bbox.y,
@@ -2920,15 +2941,16 @@ impl DocumentCore {
                     shape_ids,
                     doc_coords,
                     cell_coords,
+                    line_info,
                 ));
             }
             for child in &node.children {
-                collect_text_runs(child, runs);
+                collect_text_runs(child, line, runs);
             }
         }
 
         let mut runs = Vec::new();
-        collect_text_runs(&tree.root, &mut runs);
+        collect_text_runs(&tree.root, None, &mut runs);
 
         Ok(format!("{{\"runs\":[{}]}}", runs.join(",")))
     }
