@@ -1064,6 +1064,8 @@ impl DocumentCore {
             sa.raw_rendering = Vec::new();
         }
         section.raw_stream = None;
+        // 조판·페이지 트리 캐시 무효화 (move_control_at 과 동일한 이유)
+        self.recompose_after_control_mutation();
         Ok(r#"{"ok":true}"#.to_string())
     }
 
@@ -1112,7 +1114,23 @@ impl DocumentCore {
         c.horizontal_offset = (c.horizontal_offset as i64 + dx as i64).max(0) as u32;
         c.vertical_offset = (c.vertical_offset as i64 + dy as i64).max(0) as u32;
         section.raw_stream = None;
+        // 조판·페이지 트리 캐시 무효화 — 없으면 getPage* 조회가 옮기기 전 자리를 계속 비춘다.
+        self.recompose_after_control_mutation();
         Ok(r#"{"ok":true,"moved":true}"#.to_string())
+    }
+
+    /// 개체 속성 변형(이동·크기 등) 뒤 조판을 다시 하고 페이지 캐시를 비운다.
+    /// `set_paper_size` 경로(rendering.rs)와 같은 절차다.
+    fn recompose_after_control_mutation(&mut self) {
+        use crate::renderer::composer::compose_section;
+        self.composed = self
+            .document
+            .sections
+            .iter()
+            .map(|s| compose_section(s))
+            .collect();
+        self.mark_all_sections_dirty();
+        self.paginate();
     }
 
     /// 개체의 **앞뒤 순서**를 바꾼다 — 웹한글컨트롤 `Run("ShapeObj{BringToFront,SendToBack,
