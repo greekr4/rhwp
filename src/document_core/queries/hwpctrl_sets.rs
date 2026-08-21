@@ -1188,6 +1188,7 @@ impl DocumentCore {
             // packed `attr` 을 함께 고쳐야 저장에 실린다 — enum 만 바꾸면 묻힌다.
             crate::serializer::control::sync_text_wrap_bits(c);
             section.raw_stream = None;
+            self.recompose_after_control_mutation();
             return Ok(r#"{"ok":true}"#.to_string());
         }
 
@@ -1277,6 +1278,7 @@ impl DocumentCore {
         }
         if moved {
             section.raw_stream = None;
+            self.recompose_after_control_mutation();
         }
         Ok(format!(r#"{{"ok":true,"moved":{}}}"#, moved))
     }
